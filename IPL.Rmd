@@ -1,0 +1,229 @@
+---
+title: "Indian Premier League data analysis"
+author: "Gareth Larkan"
+date: "13/12/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Overview:
+
+Since 2008, the IPL has taken the cricket world by storm. The tournament is hosted every year and is eagerly anticipated by cricket lovers around the world. Players from around the globe are bought to compete in this rapidly growing event. It is because of this that millions of dollars exchange hands for predicting winners of the individual games. This has led to multiple algorithms being developed in hopes to try and predict possible winners. An algorithm can only take so much data which needs to be analysed and manipulated properly to achieve optimal results.
+Introduction:
+
+The structure of this report will be as follows. The data will be manipulated into a dataset that will be easily used. Following this, the data will be manipulated and then wrangled to fit the needs of the study. Graphs and tables will be used to illustrate visually the concepts that will be dealt with. The data will be modelled to create a machine learning algorithm which will performs the tasks set out in the next section of the report. A conclusion will be drawn from the extensive analysis and modelling which will hopefully provide a positive outcome.
+
+Purpose of the Project:
+
+This study serves the purpose of predicting, with a high possibility, the winners of individual games. E.G Chennai Super Kings to beat the Mumbai Indians (62% chance).
+
+Summary:
+
+In closing. The popularity of the IPL has given way to multiple different approaches to predicting winners of games. This report uses data wrangling and modelling to create a machine learning algorithm which will predict, with a percentage certainty, who will win a game. The report will follow a basic report structure (introduction, body, and conclusion) and will describe in depth the processes the code is undertaking.
+
+Dataset:
+
+This report deals with two datasets. Namely the deliveries.csv and matches.csv files. These have been provided to us by Kaggle. These sets include multiple columns for optimal analysis. The datasets are included in my GitHub account as well as the submission folder for this report. The following can be used to retrieve and load the data into a data frame.
+
+
+```{r}
+deliveries <- read.csv("deliveries.csv", header = TRUE, sep = ",", stringsAsFactors = FALSE)
+matches <- read.csv("matches.csv", header = TRUE, sep = ",", stringsAsFactors = FALSE)
+```
+
+It is then important to create a test set and a training set. This is done in the following way:
+
+```{r data-split}
+# test set will be approx 10% of our data set
+test_index <- createDataPartition(final_data$winner, times = 1, p = 0.1, list = FALSE)
+
+training <- final_data[-test_index,]
+temp <- final_data[test_index,]
+
+# Make sure all variable values in test set are also in train set
+testing <- temp %>%
+  semi_join(training, by = "first_bat_team") %>%
+  semi_join(training, by = "second_bat_team") %>%
+  semi_join(training, by = "venue") %>%
+  semi_join(training, by = "toss_decision") %>%
+  semi_join(training, by = "toss_winner") 
+
+# Add rows removed from temp set back into train set
+removed <- anti_join(temp, testing)
+training <- rbind(training, removed) 
+```
+
+Thanks to this code, we can retrieve the data and partition it into different datasets. To be able to begin the analysis and wrangling, there are packages that need to be installed and used. Due to not knowing if the user has the package installed and loaded, the following code is used to make sure.
+
+```{r data-load}
+if(!require(tidyverse))
+  install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if (!require(caret))
+  install.packages("caret", repos = "http://cran.us.r-project.org")
+  install.packages('e1071', dependencies=TRUE)
+if (!require(data.table))
+  install.packages("data.table", repos = "http://cran.us.r-project.org")
+if (!require(formattable))
+  install.packages("formattable", repos = "http://cran.us.r-project.org")
+```
+
+Data Exploration and Analysis:
+
+Before any analysis can take place, cleaning of the dataset is crucial. To be able to work with datasets, we need to establish a set of guidelines which we will be able to follow. Firstly, we would need to check the data for spelling error’s and complications and correct these. This has been done in section 1.1 of the code. This section deals with the deliveries and matches dataset, as well as changing the respective errors and complications. Once this is complete, checking for NA’s are fundamental, this is done is section 1.2. We are now ready to start the analysis.
+
+Data Analysis:
+
+Before the data analysis begins, we need to create primary datasets, this should be easy and is completed in section 2.1. We can now begin with the analysis and the rest of the study.
+The first bit of analysis are the basics. Total players, teams, venues.
+
+```{r runs, echo=FALSE}
+ ggplot(aes(ball_no,count, col=factor(ball_no))) +
+  geom_col() +
+  scale_y_log10() +
+  facet_grid( ~ runs) +
+  theme(axis.text.x = element_text(
+    angle = 110,
+    size = 1,
+    hjust = 1
+  ),
+  legend.position = "none")
+```
+
+Multiple other analysis takes place that can be found in the report.
+
+Modeling:
+Players:
+Top Contributing Players:
+
+We now need to look at the players who are contributing the most to games. This will be done in different stages.
+ 
+In section 3.1, we look at the top players based on strike rates and economy rates. This section will be left out of the report as it builds on more important information that will be presented next. We skip straight to batsman who scores runs in helping their team win. When a player scores large amounts to help his team to a win, this makes him a high calibre player. We will now look at these players, with this code:
+
+```{r data}
+batsman_contr_w <- deliveries_Data %>%
+  full_join(won_matches, by = "match_id") %>%
+  filter(role == "batsman" & bat_team == team) %>%
+  group_by(match_id, player) %>%
+  summarize(batsman_score = sum(runs)) %>%
+  top_n(1, batsman_score) %>%
+  full_join(won_matches, by = "match_id")
+batsman_contr_w
+
+batsman_contr_w %>% filter(batsman_score > 120)
+```
+
+However, we must remember that bowler’s contributions are not ranked as high as batting contributions unless the contribution was significant. So, in this case, we would need to look at bowlers who took 5 or more wickets. To do this, we will use this code:
+
+```{r data}
+bowler_contr_w <- deliveries_Data %>%
+  full_join(won_matches, by = "match_id") %>%
+  filter(role=="bowler" & bowl_team == team) %>%
+  filter (dismissal_kind %in% c("bowled", "caught", "caught and bowled", "hit wicket",     
+                                "lbw", "stumped")) %>%
+  select(match_id, team, bowl_team, player, dismissal_kind) %>%
+  group_by(match_id, player) %>% 
+  summarize(bowler_wckts = n()) %>%
+  top_n(1, bowler_wckts) %>%
+  full_join(won_matches, by = "match_id")
+bowler_contr_w
+
+#Bowling contribution in winning matches but with 5 or more wickets
+bowler_contr_w %>% filter(bowler_wckts > 4)
+```
+
+We continue to look at interesting stats, which will be spoke about but not visually shown. The next thing to look at is how many times has a batter / bowler put in a performance which puts them in the previous categories. DA Warner has done this 28 times, which is remarkable. However, players like Gambhir and Sharma are hot on his heels. In terms of bowlers, Malinga is ahead with 30 appearances, followed closely by Singh and Mishra. These are the top 3 in each category. 
+
+But who is to say that these performances should only count if the team win’s? What if a player scores 120 and the team loses? He should still achieve some sort of reward in our analysis. Therefore, we look at the top performers in losing games as well.
+
+We can see by looking at this data, that Pant scored 130 runs for the Dehli Capitals, but his team still lost. This deserves praise, no matter which way the game goes. This is the case for multiple batsmen. 
+
+So now it is only fair to combine the statistics and look at who the top batsmen contributors are no matter if the team wins or loses. When we look at this, we see DA Warner has contributed 47 times, followed by Sharma on 44 and Chris Gayle on 43.
+
+When we do the same for the bowlers. We see that A Mishra has contributed 48 times, along with Malinga. Followed by B Kumar who has contributed 46 times.
+
+But now it is very important to look at a key position in cricket. The all-rounder. What if a player contributes with the bat and the ball? We should count this. Who are the best all-rounders?  Once we do this, we see that DJ Bravo has contributed 56 times (46 bowling / 10 batting). Next is SR Watson, contributing 52 times (24 batting / 28 bowling). After this, we can make more of a deduction as to who the top contributing players are.
+
+Top Excelling Players:
+In the previous section, we discuss the top contributing players in the IPL by looking at runs scored, and wickets taken in different pressure scenarios throughout the league.
+
+In this section, we will look at batting strike rates and bowling economy rates. This creates a more thorough investigation into the player’s who are more likely to be match winners for their respective teams. First, we look at the batsmen with the best strike rates, followed by the bowlers with the best economies. 
+
+The strike rate is defined as “the average of how many runs that batmen scores for every 100 balls faced” (Cricketers Hub – Your Number 1 Cricket Resource, 2020). 
+The economy rate of a bowler is defined as “the average number of runs conceded for each over bowled” (Captain Calculator – A mathematical superhero, 2020).
+
+When we look at the batsmen’s strike rate, we use the following code:
+
+```{r data}
+top_10 <- str_rates %>%
+  head(10)
+top_10
+```
+
+After looking at the graphs in the report, we immediately see who the excellent players are. However, it is important to remember that there might be some bias. What is when Dale Steyn was bowling, he only ever bowled to the worst ranked batsmen and when A Kumble was bowling, he only ever bowled to the best batsmen. This would be unfair, and the results would be bias. We will now look at the best strike rates vs top economy bowlers, and vice versa.
+
+When we look at this, we see an interesting change. Only one player from the original top 10 batsmen is still there, this being AB de Villiers. So now, we have a different set of excellent players.
+When we perform the same operation for the bowlers, there are only 2 bowlers in both lists. These are R Ashwin and SP Narine. Once again, we are left with different players.
+
+Top Star Players:
+
+Now looking at the previous two sections, we can make deductions on who the star players are based on who wins matches for their teams and who performs well against the best players.
+
+```{r star players}
+star_players <- top_rate_players %>%
+  select(-player_value) %>%
+  full_join(top_excel_players, by = "player") %>%
+  mutate(sr_t20 = replace_na(sr_t20, batsmen_avgs$median_runs / batsmen_avgs$avg_balls)) %>%
+  mutate(er_t20 = replace_na(er_t20, bowler_avgs$avg_runs / bowler_avgs$median_balls)) %>%
+  full_join(top_contri_players, by="player") %>% 
+  
+  mutate(player_value = 100 * ((reg_str_rate + sr_t20) + 1 /
+                                 (reg_eco_rate + er_t20) + 
+                                 player_contri_rate)) %>%
+  select(player) %>%
+  mutate(rank = row_number())
+
+star_players %>%
+  head(10)
+```
+
+We can now begin our machine learning algorithm to forecast future matches in the IPL.
+
+Machine Learning Algorithm:
+
+The first thing to do before we start the algorithm is to clarify our data set’s and create any more 
+that we will use.
+
+After this has been performed, we are ready to create the algorithm.
+ 
+For the purposes of the study, we are using a F1 score. The f1 score is a measurement of precision and accuracy. This is the simple definition and other definitions can be found on the internet.
+
+Naïve-Bayes method:
+
+The Naïve-Bayes method is arguably one of the easiest machine learning algorithms (MLA) to understand due to its simple binary and categorical input values. The calculation of the probabilities for each hypothesis become simplified to make their calculation tractable. The method makes use of the very unrealistic assumption that the values are conditionally independent of each other, which is a bad assumption to make in the real world.
+
+We use the Naïve-Bayes method in this study to show how it deviates from the final product. This gives us an idea of how inaccurate this method is.
+
+Other methods are used such as rpart, multinom, KNN and more.
+
+Results:
+
+Our journey to the machine learning algorithm has come to an end and the results are what we wanted.
+
+We can see by the table above that the KNN and RF methods are good, however, the Multinom and LDA methods are better as they provide scores for all the teams (classes). 
+
+Conclusion:
+
+In conclusion, this study performed multiple data manipulation and data analysis to help with the production of a machine learning algorithm, which would help us better understand which teams are more likely to win matches based on all the analysis done.
+
+The analysis went well, and we picked up on multiple patters and used these carefully to create an algorithm using 6 different methods. 
+
+Overall, this study was a success and has produced positive results.
+
+
+
+
